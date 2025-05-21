@@ -1,0 +1,8 @@
+cvzone
+pyserial
+vosk
+speechRecognition
+pyaudio
+pygame
+google-generativeai
+pyttsx3
