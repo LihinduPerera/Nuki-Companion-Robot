@@ -1,2 +1,4 @@
 Ai_Models/
 .env
+.venv
+.idea

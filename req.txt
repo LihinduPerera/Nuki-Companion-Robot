@@ -6,3 +6,4 @@ pyaudio
 pygame
 google-generativeai
 pyttsx3
+python-dotenv
