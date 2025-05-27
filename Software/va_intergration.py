@@ -146,6 +146,11 @@ import threading
 from dotenv import load_dotenv
 from TTS.api import TTS
 import google.generativeai as gemini
+from ws_server import start_websocket_server, send_log
+
+def print_log(message):
+    print(message)
+    send_log(message)
 
 load_dotenv()
 apiKey = os.getenv("API_KEY")
@@ -153,17 +158,17 @@ gemini.configure(api_key=apiKey)
 
 pygame.mixer.init()
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print("Using device:", device)
+print_log(f"Using device: {device}")
 
 tts = TTS("tts_models/en/vctk/vits", progress_bar=False, gpu=torch.cuda.is_available())
 default_speaker = tts.speakers[0] if tts.speakers else None
-print(f"Using speaker: {default_speaker}")
+print_log(f"Using speaker: {default_speaker}")
 
 try:
     model = whisper.load_model("turbo", device=device)
-    print("Whisper model loaded successfully.")
+    print_log("Whisper model loaded successfully.")
 except Exception as e:
-    print("Failed to load Whisper model:", e)
+    print_log(f"Failed to load Whisper model: {e}")
     exit(1)
 
 def play_sound(file_path):
@@ -174,7 +179,7 @@ def play_sound(file_path):
             while pygame.mixer.music.get_busy():
                 pygame.time.Clock().tick(10)
         except Exception as e:
-            print("Audio Playback Error:", e)
+            print_log(f"Audio Playback Error: {e}")
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -188,7 +193,7 @@ def text_to_speech(text):
         tts.tts_to_file(text=text, speaker=default_speaker, file_path=audio_path, length_scale=1.5)
         play_sound(audio_path)
     except Exception as e:
-        print("TTS Error:", e)
+        print_log(f"TTS Error: {e}")
 
 def record_audio(duration=5):
     RATE = 16000
@@ -223,7 +228,7 @@ def transcribe_audio(path):
         result = model.transcribe(path, language="en", task="transcribe")
         return result["text"].strip()
     except Exception as e:
-        print("Transcription Error:", e)
+        print_log(f"Transcription Error: {e}")
         return ""
     finally:
         if os.path.exists(path):
@@ -235,42 +240,45 @@ def llm_response(prompt):
         response = gmodel.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
-        print("LLM Error:", e)
+        print_log(f"LLM Error: {e}")
         return "Sorry, I couldn't generate a response."
 
 def wait_for_wake_word():
     wake_words = ["hey", "hello", "noki", "nuki"]
     wake_words = [w.lower() for w in wake_words]
 
-    print(f"Waiting for wake words: {wake_words} ...")
+    print_log(f"Waiting for wake words: {wake_words} ...")
     while True:
         path = record_audio(duration=5)
         text = transcribe_audio(path).lower()
-        print(f"Heard (wake): {text}")
+        print_log(f"Heard (wake): {text}")
         if any(wake_word in text for wake_word in wake_words):
             return
 
 def main_loop():
+    start_websocket_server()
+    
     while True:
         try:
             wait_for_wake_word()
             text_to_speech("Yes? How can I help you!")
             audio_path = record_audio(duration=5)
             user_text = transcribe_audio(audio_path)
-            print(f"You said: {user_text}")
+            print_log(f"You said: {user_text}")
 
             if user_text:
-                response = llm_response(user_text)
-                print(f"Assistant: {response}")
+                # response = llm_response(user_text)
+                response = "A very good response !"
+                print_log(f"Assistant: {response}")
                 text_to_speech(response)
             else:
                 text_to_speech("I didn't catch that.")
         except KeyboardInterrupt:
-            print("Exiting...")
+            print_log("Exiting...")
             text_to_speech("Have a great Day!")
             break
         except Exception as e:
-            print("Runtime error:", e)
+            print_log(f"Runtime error: {e}")
             text_to_speech("Sorry, I had an issue.")
 
 if __name__ == "__main__":
