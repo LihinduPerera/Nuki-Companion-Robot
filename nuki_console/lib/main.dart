@@ -11,12 +11,16 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Nuki Console',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        brightness: Brightness.dark,
+        fontFamily: 'Courier',
         useMaterial3: true,
+        scaffoldBackgroundColor: Colors.black,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.greenAccent, brightness: Brightness.dark),
       ),
-      home: ConsoleScreen()
+      home: ConsoleScreen(),
     );
   }
 }
@@ -38,7 +42,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     super.initState();
     _channel.stream.listen((data) {
       setState(() {
-        _logs.add(data);
+        _logs.insert(0, data); // Add new logs at the top
       });
     });
   }
@@ -53,16 +57,43 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Assistant Logs'),
+        backgroundColor: Colors.black,
+        centerTitle: true,
+        title: Text(
+          "Nuki Console",
+          style: TextStyle(
+            color: Colors.greenAccent,
+            fontSize: 26,
+            fontFamily: 'Courier',
+            letterSpacing: 1.5,
+          ),
+        ),
       ),
-      body: ListView.builder(
-        itemCount: _logs.length,
-        itemBuilder: (context, index) {
-          return ListTile(
-            title: Text(_logs[index]),
-          );
-        },
-      ),
+      body: _logs.isEmpty
+          ? Center(
+              child: Text(
+                'Waiting for logs...',
+                style: TextStyle(color: Colors.white54),
+              ),
+            )
+          : ListView.builder(
+              reverse: false,
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              itemCount: _logs.length,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Text(
+                    _logs[index],
+                    style: TextStyle(
+                      color: Colors.greenAccent,
+                      fontFamily: 'Courier',
+                      fontSize: 14,
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

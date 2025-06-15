@@ -1,203 +1,75 @@
-# import whisper
-# import torch
-# import pyaudio
-# import wave
-# import pygame
-# import os
-# import tempfile
-# import google.generativeai as gemini
-# from dotenv import load_dotenv
-
-# from TTS.api import TTS
-
-# load_dotenv()
-# apiKey = os.getenv("API_KEY")
-# print("API key loaded:", bool(apiKey))
-
-# gemini.configure(api_key=apiKey)
-
-# pygame.mixer.init()
-
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# print("Using device:", device)
-
-# tts_model_name = "tts_models/en/vctk/vits"
-# tts = TTS(tts_model_name, progress_bar=False, gpu=torch.cuda.is_available())
-
-
-# default_speaker = tts.speakers[0] if tts.speakers else None
-# print(f"Using speaker: {default_speaker}")
-
-# def text_to_speech(text):
-#     try:
-#         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-#             audio_path = tmpfile.name
-
-#         tts.tts_to_file(
-#             text=text,
-#             speaker=default_speaker,
-#             file_path=audio_path,
-#             length_scale=2)
-
-#         play_sound(audio_path)
-
-#     except Exception as e:
-#         print("TTS Error:", e)
-#     finally:
-
-#         try:
-#             pygame.mixer.music.stop()
-#             while pygame.mixer.music.get_busy():
-#                 pygame.time.Clock().tick(10)
-#             os.remove(audio_path)
-#         except Exception as cleanup_error:
-#             print("File deletion error:", cleanup_error)
-
-
-# def play_sound(file_path):
-#     try:
-#         pygame.mixer.music.load(file_path)
-#         pygame.mixer.music.play()
-#         while pygame.mixer.music.get_busy():
-#             pygame.time.Clock().tick(10)
-#     except Exception as e:
-#         print("Audio Playback Error:", e)
-
-# try:
-#     model = whisper.load_model("turbo", device=device)
-#     print("Whisper model loaded successfully.")
-# except Exception as e:
-#     print("Failed to load Whisper model:", e)
-#     text_to_speech("Failed to load the speech recognition model. Please check the configuration.")
-#     exit(1)
-
-# def listen_to_voice():
-#     RATE = 16000
-#     CHUNK = 1024
-#     FORMAT = pyaudio.paInt16
-#     CHANNELS = 1
-#     RECORD_SECONDS = 5
-
-#     p = pyaudio.PyAudio()
-#     stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-
-#     text_to_speech("Listening")
-
-#     frames = []
-#     for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-#         data = stream.read(CHUNK)
-#         frames.append(data)
-
-#     stream.stop_stream()
-#     stream.close()
-#     p.terminate()
-
-#     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-#         wf = wave.open(tmpfile.name, 'wb')
-#         wf.setnchannels(CHANNELS)
-#         wf.setsampwidth(p.get_sample_size(FORMAT))
-#         wf.setframerate(RATE)
-#         wf.writeframes(b''.join(frames))
-#         wf.close()
-#         audio_path = tmpfile.name
-
-#     try:
-#         result = model.transcribe(audio_path)
-#         print("You said:", result['text'])
-#         return result['text']
-#     finally:
-#         if os.path.exists(audio_path):
-#             os.remove(audio_path)
-
-# def llm_response(text):
-#     try:
-#         gmodel = gemini.GenerativeModel(model_name="gemini-2.0-flash")
-#         response = gmodel.generate_content(text)
-#         print("Gemini:", response.text)
-#         return response.text
-#     except Exception as e:
-#         print("LLM Error:", e)
-#         return "Sorry, I couldn't generate a response."
-
-# # Main loop
-# if __name__ == "__main__":
-#     while True:
-#         try:
-#             user_input = listen_to_voice()
-#             if user_input.strip():
-#                 response = llm_response(user_input)
-#                 text_to_speech(response)
-#         except KeyboardInterrupt:
-#             print("\nExiting...")
-#             text_to_speech("Exiting")
-#             break
-#         except Exception as e:
-#             print("Runtime Error:", e)
-#             text_to_speech("Sorry, I encountered an error.")
-
-import whisper
+import requests
 import torch
 import pyaudio
 import wave
 import pygame
 import os
 import tempfile
-import threading
-from dotenv import load_dotenv
+
 from TTS.api import TTS
-import google.generativeai as gemini
 from ws_server import start_websocket_server, send_log
+
+from faster_whisper import WhisperModel
 
 def print_log(message):
     print(message)
     send_log(message)
-
-load_dotenv()
-apiKey = os.getenv("API_KEY")
-gemini.configure(api_key=apiKey)
 
 pygame.mixer.init()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print_log(f"Using device: {device}")
 
 tts = TTS("tts_models/en/vctk/vits", progress_bar=False, gpu=torch.cuda.is_available())
-default_speaker = tts.speakers[0] if tts.speakers else None
-print_log(f"Using speaker: {default_speaker}")
 
+default_language = "en"
+default_speaker_wav = "Audio/sample-0.wav"
+print_log(f"XTTS model loaded. Using language: {default_language}")
+
+whisper_model_type = 'turbo'
 try:
-    model = whisper.load_model("turbo", device=device)
-    print_log("Whisper model loaded successfully.")
+    model = WhisperModel(whisper_model_type, device=device, compute_type="float16" if device == "cuda" else "int8")
+    print_log("FastWhisper model loaded successfully.")
 except Exception as e:
-    print_log(f"Failed to load Whisper model: {e}")
+    print_log(f"Failed to load FastWhisper model: {e}")
     exit(1)
 
-def play_sound(file_path):
-    def _play():
-        try:
-            pygame.mixer.music.load(file_path)
-            pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                pygame.time.Clock().tick(10)
-        except Exception as e:
-            print_log(f"Audio Playback Error: {e}")
-        finally:
-            if os.path.exists(file_path):
-                os.remove(file_path)
+def play_sound(file_path, should_delete=True):
+    try:
+        pygame.mixer.music.load(file_path)
+        pygame.mixer.music.play()
 
-    threading.Thread(target=_play).start()
+        # Block the main thread until audio finishes
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+    except Exception as e:
+        print_log(f"Audio Playback Error: {e}")
+    finally:
+        try:
+            pygame.mixer.music.unload()
+        except Exception:
+            pass
+        if should_delete and os.path.exists(file_path):
+            os.remove(file_path)
 
 def text_to_speech(text):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
             audio_path = tmpfile.name
-        tts.tts_to_file(text=text, speaker=default_speaker, file_path=audio_path, length_scale=1.5)
+        tts.tts_to_file(
+            text=text,
+            file_path=audio_path,
+            speaker=tts.speakers[34],  # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
+            # 37(good ep voice) , 44(cute) , 45 , 47 , 48 , 49 , 51 , 54 , 58(robot like)
+            #  64 , 65 , 67 , 75(cute)
+            speed=0.09
+        )
         play_sound(audio_path)
     except Exception as e:
         print_log(f"TTS Error: {e}")
 
 def record_audio(duration=5):
     RATE = 16000
-    CHUNK = 2048
+    CHUNK = 1024
     FORMAT = pyaudio.paInt16
     CHANNELS = 1
 
@@ -225,8 +97,9 @@ def record_audio(duration=5):
 
 def transcribe_audio(path):
     try:
-        result = model.transcribe(path, language="en", task="transcribe")
-        return result["text"].strip()
+        segments, info = model.transcribe(path,language="en")
+        text = " ".join([segment.text for segment in segments])
+        return text.strip()
     except Exception as e:
         print_log(f"Transcription Error: {e}")
         return ""
@@ -234,14 +107,37 @@ def transcribe_audio(path):
         if os.path.exists(path):
             os.remove(path)
 
+# Global history list
+conversation_history = []
+
 def llm_response(prompt):
     try:
-        gmodel = gemini.GenerativeModel(model_name="gemini-2.0-flash")
-        response = gmodel.generate_content(prompt)
-        return response.text.strip()
+        # Append user input to history
+        conversation_history.append(f"User: {prompt}")
+
+        # Join all history for context
+        full_prompt = "\n".join(conversation_history) + "\nAssistant:"
+
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "llama3.2",
+                "prompt": full_prompt,
+                "stream": False
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        reply = response.json().get("response", "").strip()
+
+        # Append assistant reply to history
+        conversation_history.append(f"Assistant: {reply}")
+
+        return reply
     except Exception as e:
         print_log(f"LLM Error: {e}")
         return "Sorry, I couldn't generate a response."
+
 
 def wait_for_wake_word():
     wake_words = ["hey", "hello", "noki", "nuki"]
@@ -260,15 +156,16 @@ def main_loop():
     
     while True:
         try:
+            # text_to_speech("Hellow I'm nuki, I'm new TTS model for Text to speech. Testing 1, Testing 2 , Testing 3 , Testing Testing")
             wait_for_wake_word()
-            text_to_speech("Yes? How can I help you!")
+            # text_to_speech("Yes? How can I help you!")
+            play_sound('Audio/deep2.mp3', should_delete=False)
             audio_path = record_audio(duration=5)
             user_text = transcribe_audio(audio_path)
             print_log(f"You said: {user_text}")
 
             if user_text:
-                # response = llm_response(user_text)
-                response = "A very good response !"
+                response = llm_response(user_text)
                 print_log(f"Assistant: {response}")
                 text_to_speech(response)
             else:
