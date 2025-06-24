@@ -166,8 +166,9 @@ def main_loop():
 
             if user_text:
                 response = llm_response(user_text)
-                print_log(f"Assistant: {response}")
-                text_to_speech(response)
+                clean_response = response.replace("*", "")
+                print_log(f"Assistant: {clean_response}")
+                text_to_speech(clean_response)
             else:
                 text_to_speech("I didn't catch that.")
         except KeyboardInterrupt:
