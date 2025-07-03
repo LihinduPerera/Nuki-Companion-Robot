@@ -2,3 +2,6 @@ Ai_Models/
 .env
 .venv
 .idea
+yolo11n-pose.pt
+yolo11n.pt
+yolov9e.pt
