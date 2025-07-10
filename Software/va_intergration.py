@@ -259,7 +259,6 @@ def main_loop():
     
     while True:
         try:
-
             # text_to_speech("Hellow I'm nuki, I'm new TTS model for Text to speech. Testing 1, Testing 2 , Testing 3 , Testing Testing")
             wait_for_wake_word()
             # text_to_speech("Yes? How can I help you!")
