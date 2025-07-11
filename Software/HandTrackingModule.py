@@ -31,25 +31,21 @@ class handDetector():
                                                 self.mpHands.HAND_CONNECTIONS)
         return img
     
-    def findPosition(self,img, handNo=0 , draw=True):
-
-        lmList = []
+    def findPosition(self, img, handNo=0, draw=True, returnZ=False):
+        self.lmList = []
         if self.results.multi_hand_landmarks:
-            myhand = self.results.multi_hand_landmarks[handNo]
-            for id, lm in enumerate(myhand.landmark):
-            # print(id,lm)
-                h, w, c = img.shape
-                cx, cy = int(lm.x*w), int(lm.y*h)
-                # print(id, lm)
-
-                # print(id,cx, cy)
-
-                lmList.append([id,cx,cy])
+            myHand = self.results.multi_hand_landmarks[handNo]
+            h, w, _ = img.shape
+            for id, lm in enumerate(myHand.landmark):
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                if returnZ:
+                    self.lmList.append([id, lm.x, lm.y, lm.z])  # z included
+                else:
+                    self.lmList.append([id, cx, cy])
                 if draw:
-                    if id==4:
-                        cv.circle(img, (cx,cy), 15 , (255,0,255) , cv.FILLED)
+                    cv.circle(img, (cx, cy), 5, (255, 0, 0), cv.FILLED)
+        return self.lmList
 
-        return lmList
 
 def main():
     previousTime = 0 
