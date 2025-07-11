@@ -8,6 +8,7 @@ import pygame
 import os
 import requests
 import threading
+import numpy as np
 
 from TTS.api import TTS
 
@@ -49,93 +50,67 @@ def text_to_speech_async(text):
     threading.Thread(target=tts_thread_function, args=(text,), daemon=True).start()
 
 class WaveDetector:
-    def __init__(self, min_amplitude=50, min_waves=3, cooldown=2.0, wave_timeout=3.0):
-        """
-        min_amplitude: minimum horizontal movement in pixels to consider a wave
-        min_waves: number of back-and-forth waves required
-        cooldown: seconds to wait after detection before detecting again
-        wave_timeout: max seconds allowed between waves before resetting count
-        """
+    def __init__(self, min_amplitude=80, min_waves=2, cooldown=2.0, wave_timeout=1.5):
         self.min_amplitude = min_amplitude
         self.min_waves = min_waves
         self.cooldown = cooldown
         self.wave_timeout = wave_timeout
-        
-        self.positions = []
-        self.last_wave_time = 0
-        self.wave_count = 0
-        self.last_direction = 0  # +1 or -1 for direction of movement
+
+        self.positions = []  # list of (timestamp, x_position)
         self.last_detection_time = 0
+        self.wave_peaks = []
+        self.last_peak_time = 0
 
     def update(self, x):
-        """
-        Call this every frame with the current wrist x position.
-        Tracks direction changes and counts waves.
-        """
         now = time.time()
 
-        # If cooldown active, ignore updates
         if now - self.last_detection_time < self.cooldown:
             return
-        
-        # Remove old positions to keep window manageable (last 2 seconds)
-        self.positions.append((now, x))
-        self.positions = [(t, pos) for (t, pos) in self.positions if now - t < 2]
 
-        # If we don't have enough points yet, wait
+        # Store recent positions (last 1.5 seconds)
+        self.positions.append((now, x))
+        self.positions = [(t, px) for t, px in self.positions if now - t < 1.5]
+
         if len(self.positions) < 5:
             return
-        
-        # Calculate movement direction based on last two points
-        prev_x = self.positions[-2][1]
-        dx = x - prev_x
 
-        # If movement is too small, ignore
-        if abs(dx) < 5:
-            return
-        
-        current_direction = 1 if dx > 0 else -1
-        
-        # Check for direction change
-        if self.last_direction != 0 and current_direction != self.last_direction:
-            # Calculate amplitude of wave
-            # Find min and max x in last positions to estimate amplitude
-            xs = [pos for _, pos in self.positions]
-            amplitude = max(xs) - min(xs)
+        # Extract X values
+        xs = np.array([pos[1] for pos in self.positions])
+        smoothed_xs = np.convolve(xs, np.ones(5)/5, mode='valid')
 
-            # Only count if amplitude is big enough
-            if amplitude >= self.min_amplitude:
-                # Check if waves are happening within wave_timeout
-                if now - self.last_wave_time > self.wave_timeout:
-                    # Too much time passed, reset wave count
-                    self.wave_count = 0
+        # Find peaks (local maxima and minima)
+        peaks = []
+        for i in range(1, len(smoothed_xs)-1):
+            if smoothed_xs[i-1] < smoothed_xs[i] > smoothed_xs[i+1]:
+                peaks.append(('max', smoothed_xs[i], self.positions[i+2][0]))
+            elif smoothed_xs[i-1] > smoothed_xs[i] < smoothed_xs[i+1]:
+                peaks.append(('min', smoothed_xs[i], self.positions[i+2][0]))
 
-                self.wave_count += 1
-                self.last_wave_time = now
+        # Remove outdated peaks
+        self.wave_peaks = [p for p in peaks if now - p[2] < self.wave_timeout]
 
-                # Debug print for wave count and amplitude
-                print(f"Wave movement detected! Count: {self.wave_count}, Amplitude: {amplitude}")
+        # Check if we have enough alternating peaks with sufficient amplitude
+        wave_count = 0
+        for i in range(1, len(self.wave_peaks)):
+            prev, curr = self.wave_peaks[i-1], self.wave_peaks[i]
+            if prev[0] != curr[0]:
+                amplitude = abs(curr[1] - prev[1])
+                if amplitude > self.min_amplitude:
+                    wave_count += 1
 
-        self.last_direction = current_direction
-
-    def detect_wave(self):
-        """
-        Returns True if enough waves detected and resets counter + cooldown.
-        """
-        now = time.time()
-        if self.wave_count >= self.min_waves:
-            # Reset wave count and start cooldown
-            self.wave_count = 0
+        if wave_count >= self.min_waves:
+            self.wave_peaks.clear()
             self.last_detection_time = now
+            print(f"Wave Detected! Count: {wave_count}")
             return True
         return False
 
 def main():
     stream_url = 'http://192.168.8.158:81/stream'  # Change as needed
-    cap = cv.VideoCapture(stream_url)
+    cap = cv.VideoCapture(0)
 
     detector = htm.handDetector()
-    waveDetector = WaveDetector(min_amplitude=50, min_waves=3, cooldown=2.0, wave_timeout=3.0)
+    waveDetector = WaveDetector(min_amplitude=80, min_waves=3, cooldown=2.0, wave_timeout=3.0)
 
     while True:
         success, img = cap.read()
@@ -148,10 +123,8 @@ def main():
         lmList = detector.findPosition(img, draw=True)
 
         if lmList:
-            wrist_x = lmList[0][1]  # Wrist x-coordinate
-            waveDetector.update(wrist_x)
-
-            if waveDetector.detect_wave():
+            index_finger_x = lmList[8][1]  # More stable and responsive for gestures
+            if waveDetector.update(index_finger_x):
                 print("Wave detected!")
                 text_to_speech_async("Hello! I see you waving! How are you today?")
                 try:
