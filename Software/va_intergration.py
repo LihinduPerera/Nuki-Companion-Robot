@@ -68,7 +68,7 @@ def text_to_speech(text):
         tts.tts_to_file(
             text=text,
             file_path=audio_path,
-            speaker=tts.speakers[34],  # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
+            speaker=tts.speakers[75],  # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
             # 37(good ep voice) , 44(cute) , 45 , 47 , 48 , 49 , 51 , 54 , 58(robot like)
             #  64 , 65 , 67 , 75(cute)
             speed=0.01
@@ -259,7 +259,7 @@ def main_loop():
     
     while True:
         try:
-            # text_to_speech("Hellow I'm nuki, I'm new TTS model for Text to speech. Testing 1, Testing 2 , Testing 3 , Testing Testing")
+            text_to_speech("Hellow I'm nuki, I'm new TTS model for Text to speech. Testing 1, Testing 2 , Testing 3 , Testing Testing")
             wait_for_wake_word()
             # text_to_speech("Yes? How can I help you!")
             play_sound('Audio/deep2.mp3', should_delete=False)

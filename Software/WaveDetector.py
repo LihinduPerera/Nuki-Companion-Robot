@@ -48,8 +48,8 @@ def handle_wave_response(text):
         play_sound(audio_path)
 
         try:
-            requests.get("http://192.168.8.101/A6", timeout=2)
-            requests.get("http://192.168.8.101/M1?angle=180", timeout=2)
+            requests.get("http://192.168.8.160/A6", timeout=3)
+            requests.get("http://192.168.8.160/C1", timeout=3)
         except requests.RequestException as e:
             print(f"Failed to trigger robot animation: {e}")
 
@@ -115,7 +115,8 @@ class WaveDetector:
         return False
 
 def main():
-    cap = cv.VideoCapture(0)
+    stream_url = 'http://192.168.8.158:81/stream'
+    cap = cv.VideoCapture(stream_url)
 
     detector = htm.handDetector()
     waveDetector = WaveDetector(min_amplitude=80, min_waves=3, cooldown=2.0, wave_timeout=3.0)
