@@ -8,15 +8,16 @@ import tempfile
 import numpy as np
 import time
 
+import soundfile as sf
+from scipy import signal
 from fuzzywuzzy import fuzz
 
 from TTS.api import TTS
 from ws_server import start_websocket_server, send_log
-
 from faster_whisper import WhisperModel
 
-from pydub import AudioSegment
-from pydub.effects import low_pass_filter, high_pass_filter
+import librosa
+import soundfile as sf
 
 
 def print_log(message):
@@ -42,6 +43,52 @@ except Exception as e:
     exit(1)
 
 
+def roboticize_audio(input_path):
+    """Apply clean robotic effects to the audio file"""
+    try:
+        # Read the audio file
+        data, samplerate = sf.read(input_path)
+        
+        if len(data.shape) > 1:
+            data = data[:, 0]  # Convert to mono if stereo
+        
+        # Gentle pitch modulation (very subtle)
+        length = len(data)
+        t = np.arange(length) / samplerate
+        mod_depth = 12  # Reduced modulation depth
+        mod_rate = 0.2  # Slower modulation rate
+        pitch_mod = mod_depth * np.sin(2 * np.pi * mod_rate * t)
+        
+        # Create phase modulation
+        phase_mod = np.cumsum(2 * np.pi * (440 + pitch_mod) / samplerate)
+        carrier = np.sin(phase_mod)
+        
+        # Mix with original (strong original voice)
+        robotic_data = 0.9 * data + 0.1 * carrier * np.abs(data)
+        
+        # Mild bit reduction for digital character
+        bit_reduction = 24  # Higher = cleaner
+        max_val = 2**(bit_reduction - 1)
+        robotic_data = np.round(robotic_data * max_val) / max_val
+        
+        # Clean high-pass filter
+        cutoff = 500  # Hz (higher cutoff preserves more voice quality)
+        nyquist = 0.5 * samplerate
+        normal_cutoff = cutoff / nyquist
+        b, a = signal.butter(2, normal_cutoff, btype='high', analog=False)
+        robotic_data = signal.lfilter(b, a, robotic_data)
+        
+        # Remove the noise addition completely
+        # Normalize audio to prevent clipping
+        robotic_data = robotic_data / np.max(np.abs(robotic_data))
+        
+        # Write the processed audio back
+        sf.write(input_path, robotic_data, samplerate)
+        
+    except Exception as e:
+        print_log(f"Roboticize error: {e}")
+
+
 def play_sound(file_path, should_delete=True):
     try:
         pygame.mixer.music.load(file_path)
@@ -60,6 +107,21 @@ def play_sound(file_path, should_delete=True):
         if should_delete and os.path.exists(file_path):
             os.remove(file_path)
 
+def slow_down_audio(file_path, speed_factor=0.7):
+    """Slow down audio without changing pitch using librosa"""
+    try:
+        # Load audio file
+        y, sr = librosa.load(file_path, sr=None)
+        
+        # Time-stretch using librosa's phase vocoder
+        y_slow = librosa.effects.time_stretch(y, rate=1/speed_factor)
+        
+        # Save the slowed down audio
+        sf.write(file_path, y_slow, sr)
+        
+    except Exception as e:
+        print_log(f"Slow down error: {e}")
+
 
 def text_to_speech(text):
     try:
@@ -68,12 +130,13 @@ def text_to_speech(text):
         tts.tts_to_file(
             text=text,
             file_path=audio_path,
-            speaker=tts.speakers[75],  # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
+            speaker=tts.speakers[34] , # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
             # 37(good ep voice) , 44(cute) , 45 , 47 , 48 , 49 , 51 , 54 , 58(robot like)
-            #  64 , 65 , 67 , 75(cute)
-            speed=0.01
+            #  64 , 65 , 67 , 75(cute),
+            speed=0.0001
         )
-        # roboticize_audio(audio_path)
+        slow_down_audio(audio_path, speed_factor=1.1)
+        roboticize_audio(audio_path)  # Apply subtle robotic effects
         play_sound(audio_path)
     except Exception as e:
         print_log(f"TTS Error: {e}")
@@ -110,7 +173,7 @@ def record_audio(duration=5):
 
 def transcribe_audio(path):
     try:
-        segments, info = model.transcribe(path,language="en")
+        segments, info = model.transcribe(path, language="en")
         text = " ".join([segment.text for segment in segments])
         return text.strip()
     except Exception as e:
@@ -150,52 +213,6 @@ def llm_response(prompt):
     except Exception as e:
         print_log(f"LLM Error: {e}")
         return f"Sorry, I couldn't generate a response. Error is {e}"
-
-
-def roboticize_audio(file_path):
-    sound = AudioSegment.from_wav(file_path)
-
-    # Step 1: Band-pass filter
-    sound = low_pass_filter(sound, 4000)
-    sound = high_pass_filter(sound, 300)
-
-    # Step 2: Metallic echo
-    echo = sound - 6
-    sound = sound.overlay(echo, position=40)
-
-    # Step 3: Tremolo
-    duration_ms = len(sound)
-    frame_ms = 100
-    freq = 30
-    mod_depth = 1
-
-    modulated = AudioSegment.empty()
-    sine_wave = np.sin(2 * np.pi * freq * np.arange(0, duration_ms, frame_ms) / 1000.0)
-
-    for i, mod in zip(range(0, duration_ms, frame_ms), sine_wave):
-        chunk = sound[i:i+frame_ms]
-        volume_factor = 1 + mod_depth * mod
-        chunk = chunk + (50 * (volume_factor - 1))
-        modulated += chunk
-
-    # Step 4: Bitcrushing
-    modulated = modulated.set_frame_rate(11025)
-
-    # Step 5: Vibrato simulation
-    vibrato = AudioSegment.empty()
-    vibrato_depth = 70
-    vibrato_rate = 70
-
-    for i in range(0, len(modulated), frame_ms):
-        chunk = modulated[i:i+frame_ms]
-        vibrato_offset = int(vibrato_depth * np.sin(2 * np.pi * vibrato_rate * i / 1000))
-        vibrato_chunk = chunk
-        if vibrato_offset > 0:
-            vibrato_chunk = chunk.overlay(chunk, position=vibrato_offset)
-        vibrato += vibrato_chunk
-
-    # Save back to original file
-    vibrato.export(file_path, format="wav")
 
 
 def wait_for_wake_word(wake_words=["hey nuki", "hello nuki", "hi nuki" , "hey no key" , "hello no key" , "hey no key"], similarity_threshold=80):
@@ -259,9 +276,8 @@ def main_loop():
     
     while True:
         try:
-            text_to_speech("Hellow I'm nuki, I'm new TTS model for Text to speech. Testing 1, Testing 2 , Testing 3 , Testing Testing")
+            text_to_speech("Hello I'm Nuki, your robotic companion. How can I assist you today?")
             wait_for_wake_word()
-            # text_to_speech("Yes? How can I help you!")
             play_sound('Audio/deep2.mp3', should_delete=False)
             audio_path = record_audio(duration=5)
             user_text = transcribe_audio(audio_path)
@@ -276,7 +292,7 @@ def main_loop():
                 text_to_speech("I didn't catch that.")
         except KeyboardInterrupt:
             print_log("Exiting...")
-            text_to_speech("Have a great Day!")
+            text_to_speech("Have a great day!")
             break
         except Exception as e:
             print_log(f"Runtime error: {e}")
@@ -284,5 +300,3 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
-
-
