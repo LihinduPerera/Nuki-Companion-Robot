@@ -130,13 +130,13 @@ def text_to_speech(text):
         tts.tts_to_file(
             text=text,
             file_path=audio_path,
-            speaker=tts.speakers[34] , # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
+            speaker=tts.speakers[75] , # 3 ,24 , 17 , 18(cute) , 33 , 34(Ep and voice is good)
             # 37(good ep voice) , 44(cute) , 45 , 47 , 48 , 49 , 51 , 54 , 58(robot like)
             #  64 , 65 , 67 , 75(cute),
             speed=0.0001
         )
-        slow_down_audio(audio_path, speed_factor=1.1)
-        roboticize_audio(audio_path)  # Apply subtle robotic effects
+        # slow_down_audio(audio_path, speed_factor=1.1)
+        # roboticize_audio(audio_path)  # Apply subtle robotic effects
         play_sound(audio_path)
     except Exception as e:
         print_log(f"TTS Error: {e}")
