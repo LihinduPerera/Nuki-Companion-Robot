@@ -59,7 +59,8 @@ def handle_wave_response(text):
 def wave_action_async():
     threading.Thread(
         target=handle_wave_response,
-        args=("Hello! I see you waving! How are you today?",),
+        args=("Hello!"
+        "",),
         daemon=True
     ).start()
 
@@ -116,7 +117,7 @@ class WaveDetector:
 
 def main():
     stream_url = 'http://192.168.8.158:81/stream'
-    cap = cv.VideoCapture(stream_url)
+    cap = cv.VideoCapture(0)
 
     detector = htm.handDetector()
     waveDetector = WaveDetector(min_amplitude=80, min_waves=3, cooldown=2.0, wave_timeout=3.0)
